@@ -15,22 +15,33 @@
 	</properties>
 	
 	<dependencies>
+		
 		<dependency>
 			<groupId>org.apache.spark</groupId>
 			<artifactId>spark-core_2.11</artifactId>
-			<version>2.3.1</version>
+			<version>2.3.2</version>
 		</dependency>
+
+		<dependency>
+			<groupId>org.apache.spark</groupId>
+			<artifactId>spark-streaming_2.11</artifactId>
+			<version>2.3.2</version>
+			<scope>provided</scope>
+		</dependency>
+		
 		<dependency>
 			<groupId>org.apache.spark</groupId>
 			<artifactId>spark-sql_2.11</artifactId>
-			<version>2.3.1</version>
+			<version>2.3.2</version>
 		</dependency>
+		
 	</dependencies>
   	<build>
 		<sourceDirectory>C:\bigData\a1\friends</sourceDirectory>
 		<scriptSourceDirectory>C:\bigData\a1\friends</scriptSourceDirectory>
 		<outputDirectory>C:\bigData\a1\friends\bin</outputDirectory>
 		<plugins>
+			
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
@@ -40,15 +51,12 @@
 					<target>1.8</target>
 				</configuration>
 			</plugin>
+			
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-assembly-plugin</artifactId>
+				<version>3.1.0</version>
 				<configuration>
-					<archive>
-						<manifest>
-							<mainClass>sparkWCexample.spWCexample.JavaWordCount</mainClass>
-						</manifest>
-					</archive>
 					<descriptorRefs>
 							<descriptorRef>jar-with-dependencies</descriptorRef>
 					</descriptorRefs>
@@ -64,6 +72,7 @@
 					</execution>
 				</executions>
 			</plugin>
+			
 			<plugin>
 				<!-- Build an executable JAR -->
 				<groupId>org.apache.maven.plugins</groupId>
@@ -74,11 +83,11 @@
 						<manifest>
 							<addClasspath>true</addClasspath>
 							<classpathPrefix>lib/</classpathPrefix>
-							<mainClass>sparkWCexample.spWCexample.JavaWordCount</mainClass>
 						</manifest>
 					</archive>
 				</configuration>
 			</plugin>
+		
 		</plugins>
 	</build>
 </project>
