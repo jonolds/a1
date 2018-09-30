@@ -30,11 +30,37 @@ import org.apache.spark.sql.SQLContext;
 
 
 @SuppressWarnings("unused")
-public class Friends {
-	
+public class Friends {	
 	public static void main(String[] args) {
 		//JAVARDD w/ each element a string in format: [person] + "\t" + [comma separated friends}
 		JavaRDD<String> lines = settings().read().textFile("sociNetShort.txt").javaRDD();
+		
+		//split each line into String[] with regex="\t". All, even friendless, have tabs.
+		JavaRDD<String[]> tokenized = lines.map(new Function<String, String[]>() {
+			public String[] call(String s) {
+				return s.split("\t");
+			}
+		});
+		
+		//make a pair for each person that has friends with an Integer(person) and Integer[](friends).
+		JavaPairRDD<Integer, Integer[]> p_fr = tokenized.filter(x->x.length > 1).mapToPair(new PairFunction<String[], Integer, Integer[]>() {
+			public Tuple2<Integer, Integer[]> call(String[] strArr) {
+				String[] frSA = strArr[1].split(",");
+				Integer[] friends = new Integer[frSA.length];
+				for(int i = 0; i < frSA.length; i++)
+					friends[i] = Integer.parseInt(frSA[i]);
+				Integer p = Integer.parseInt(strArr[0]);
+				return new Tuple2<Integer, Integer[]>(p, friends);
+			}
+		});
+
+		//make an Integer RDD for people with no friends
+		JavaRDD<Integer> no_friends = tokenized.filter(x->x.length == 1).map(new Function<String[], Integer>() {
+			public Integer call(String[] strArr) {
+				return Integer.parseInt(strArr[0]);
+			}
+		});
+
 		
 		//intCommaStrFriends: JavaPairRDD w/ each element a Tuple2<Integer, String> with [person] now converted to integer
 	    JavaPairRDD<Integer, String> intCommaStrFriends = lines.mapToPair(
@@ -47,10 +73,9 @@ public class Friends {
     	);
 	    
 	    
+	    
 	    //noFriends: JavaPairRDD consisting of all intCommaStrFriends items with empty friends string
 	    JavaPairRDD<Integer, String> noFriends = intCommaStrFriends.filter(t->t._2 == "");
-	    
-	    
 	    
 	    JavaRDD<Integer> no2 = noFriends.map(
 	    	new Function<Tuple2<Integer, String>, Integer>() {
@@ -59,9 +84,6 @@ public class Friends {
 	    		}
 	    	}
 	    );
-	    
-	    
-	    
 	    
 	    
 	    //hasFriends: complement to noFriends JavaPairRDD. noFriends.count() + hasFriends.count() == intCommaStrFriends
