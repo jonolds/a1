@@ -34,26 +34,23 @@ public class Friends {
 		JavaRDD<String> lines = spark.read().textFile("sociNetShort.txt").javaRDD();
 		JavaRDD<String[]> tokenized = lines.map(new Function<String, String[]>() { public String[] call(String s) { return s.split("\t"); } });
 		
+		//make an  RDD for people with no friends
+		JavaPairRDD<String, String[]> no_frds = tokenized.filter(x->x.length == 1).mapToPair(new PairFunction<String[], String, String[]>() {
+			public Tuple2<String, String[]> call(String[] strArr) {
+				return new Tuple2<>(strArr[0], new String[] {"","","","","","","","","",""});
+			}
+		});
+		System.out.println("no_frds.count: " + no_frds.count());
+		
 		//make a pair for each person that has friends with an (person) and [](friends).		
 		JavaPairRDD<String, String[]> has_frds = tokenized.filter(x->x.length > 1).mapToPair(new PairFunction<String[], String, String[]>() {
 			public Tuple2<String, String[]> call(String[] strArr) {
 				return new Tuple2<>(strArr[0], strArr[1].split(","));
 			}
 		});
-		System.out.println("has_frds.count(): " + has_frds.count());
-				
-//		//Each entry is a person and each value is one of its friends
-//		JavaPairRDD<String, String> pers_fr = has_frds.flatMapToPair(new PairFlatMapFunction<Tuple2<String, String[]>, String, String>() {
-//			public Iterator<Tuple2<String, String>> call(Tuple2<String, String[]> t2) {
-//				List<Tuple2<String, String>> pairs = new ArrayList<>();
-//				for(String s: t2._2)
-//					pairs.add(new Tuple2<>(t2._1, s));
-//				return pairs.iterator();
-//			}
-//		});
-//		System.out.println("pers_fr.count(): " + pers_fr.count());
+		System.out.println("has_frds.count: " + has_frds.count());
 		
-		//Each entry is a person and each value is one of its friends
+		//Deg_1 relations with tuple2<person, friend> as key, 0 as value
 		JavaPairRDD<Tuple2<String, String>,Integer> pers_fr_0 = has_frds.flatMapToPair(new PairFlatMapFunction<Tuple2<String, String[]>, Tuple2<String, String>, Integer>() {
 			public Iterator<Tuple2<Tuple2<String, String>,Integer>> call(Tuple2<String, String[]> t2) {
 				List<Tuple2<Tuple2<String, String>,Integer>> pairs = new ArrayList<>();
@@ -62,15 +59,7 @@ public class Friends {
 				return pairs.iterator();
 			}
 		});
-		System.out.println("pers_fr_0.count(): " + pers_fr_0.count());
-		
-//		//Deg_1 relations with tuple2<person, friends> as key, 0 as value
-//		JavaPairRDD<Tuple2<String, String>,Integer>  pers_fr_0 = pers_fr.mapToPair(new PairFunction<Tuple2<String, String>, Tuple2<String, String>, Integer>() {
-//			public Tuple2<Tuple2<String, String>,Integer> call(Tuple2<String, String> t1) {
-//				return new Tuple2<>(new Tuple2<String, String>(t2._1, s), 0);
-//			}
-//		});
-//		System.out.println("pers_fr_0.count(): " + pers_fr_0.count());
+		System.out.println("pers_fr_0.count: " + pers_fr_0.count());
 		
 		//Deg2 possibles. Uses has_frds to create a deg2_poss_1 entry for each pair of frds with val=1
 		JavaPairRDD<Tuple2<String, String>,Integer> deg2_poss_1 = has_frds.filter(x->x._2 != null).flatMapToPair(new PairFlatMapFunction<Tuple2<String, String[]>, Tuple2<String, String>, Integer>() {
@@ -84,62 +73,59 @@ public class Friends {
 				return d2.iterator();
 			}
 		});
-		System.out.println("deg2_poss_1.count(): " + deg2_poss_1.count());
-		
-		//make an  RDD for people with no friends
-		JavaPairRDD<String, String[]> no_friends = tokenized.filter(x->x.length == 1).mapToPair(new PairFunction<String[], String, String[]>() {
-			public Tuple2<String, String[]> call(String[] strArr) {
-				return new Tuple2<>(strArr[0], new String[] {"","","","","","","","","",""});
-			}
-		});
+		System.out.println("deg2_poss_1.count: " + deg2_poss_1.count());
 				
-		JavaPairRDD<Tuple2<String, String>,Integer> list_summed = deg2_poss_1.reduceByKey((i1, i2) -> i1 + i2).subtract(pers_fr_0);
-		JavaPairRDD<Tuple2<String, String>,Integer> sorted = list_summed.sortByKey(new Comp());
-		List<Tuple2<Tuple2<String, String>, Integer>> aList2 = sorted.collect();
+		JavaPairRDD<Tuple2<String, String>,Integer> deg2_poss_sum = deg2_poss_1.reduceByKey((i1, i2) -> i1 + i2);
+		System.out.println("deg2_poss_sum.count: " + deg2_poss_sum.count());
+		JavaPairRDD<Tuple2<String, String>,Integer> deg2 = deg2_poss_sum.subtractByKey(pers_fr_0);
+		System.out.println("deg2.count: " + deg2.count());
+		JavaPairRDD<Tuple2<String, String>,Integer> sort_pers_fr = deg2.sortByKey(new CompPersFr());
+		System.out.println("sorted.count: " + sort_pers_fr.count());
 		
-		
-		
-		sorted.saveAsTextFile("output");
-		Thread.sleep(120000);	//Leave spark Web Gui available for 2 mins to look at results
-	}
-	static class Comp implements Comparator<Tuple2<String, String>>, Serializable {
-		public int compare(Tuple2<String, String> a, Tuple2<String, String> b) {
-			if(Integer.parseInt(a._1()) > Integer.parseInt(b._1()))
-				return 1;
-			else if(Integer.parseInt(a._1()) < Integer.parseInt(b._1()))
-				return -1;
-			else {
-				if(Integer.parseInt(a._2()) >Integer.parseInt( b._2()))
-					return 1;
-				else if(Integer.parseInt(a._2()) < Integer.parseInt(b._2()))
-					return -1;
-				else
-					return 0;
+		JavaPairRDD<Tuple2<String, Integer>,String> sort_pers_numrecs_fr = sort_pers_fr.mapToPair(new PairFunction<Tuple2<Tuple2<String, String>,Integer>, Tuple2<String, Integer>, String>() {
+			public Tuple2<Tuple2<String, Integer>,String> call(Tuple2<Tuple2<String, String>,Integer> t2t2) {
+				return new Tuple2<>(new Tuple2<>(t2t2._1._1, t2t2._2), t2t2._1._2);
 			}
+		}).sortByKey(new CompByCount());
+
+		System.out.println("printSave(sort_pers_fr)");
+		printSave(sort_pers_fr);
+		System.out.println();
+		System.out.println("printSave2(sort_pers_numrecs_fr)");
+		printSave2(sort_pers_numrecs_fr);
+		
+	}
+	
+	static void printSave(JavaPairRDD<Tuple2<String, String>,Integer> sorted) throws InterruptedException {
+		List<Tuple2<Tuple2<String, String>, Integer>> aList2 = sorted.collect();
+		for(Tuple2<Tuple2<String, String>, Integer> t2: aList2)
+			System.out.println("("+ t2._1._1 + "," + t2._1._2 + ") - " + t2._2);
+//		sorted.saveAsTextFile("output");
+//		Thread.sleep(180000);	//Leave spark Web Gui available for 2 mins to look at results
+	}
+	
+	static void printSave2(JavaPairRDD<Tuple2<String, Integer>,String> sorted) throws InterruptedException {
+		List<Tuple2<Tuple2<String, Integer>, String>> aList2 = sorted.collect();
+		for(Tuple2<Tuple2<String, Integer>, String> t2: aList2)
+			System.out.println("("+ t2._1._1 + "," + t2._2 + ") - " + t2._1._2);
+		sorted.saveAsTextFile("output");
+//		Thread.sleep(180000);	//Leave spark Web Gui available for 2 mins to look at results
+	}
+	
+	static class CompPersFr implements Comparator<Tuple2<String, String>>, Serializable {
+		public int compare(Tuple2<String, String> a, Tuple2<String, String> b) {
+			return (s2int(a._1) > s2int(b._1)) ? 1: (s2int(a._1) < s2int(b._1)) ? -1 : (s2int(a._2) >s2int( b._2)) ? 1 : (s2int(a._2) < s2int(b._2)) ? -1 : 0;
 		}
 	}
 	
-	static class CompByCount implements Comparator<Tuple2<Tuple2<String, String>, Integer>>, Serializable {
-		public int compare(Tuple2<Tuple2<String, String>, Integer> a, Tuple2<Tuple2<String, String>, Integer> b) {
-			if(Integer.parseInt(a._1._1()) > Integer.parseInt(b._1._1()))
-				return 1;
-			else if(Integer.parseInt(a._1._1()) < Integer.parseInt(b._1._1()))
-				return -1;
-			else {
-				if(a._2() > b._2())
-					return 1;
-				else if(a._2() < b._2())
-					return -1;
-				else {
-					if(Integer.parseInt(a._1._2()) > Integer.parseInt(b._1._2()))
-						return -1;
-					else if(Integer.parseInt(a._1._2()) < Integer.parseInt(b._1._2()))
-						return 1;
-					else
-						return 0;
-				}	
-			}
+	static class CompByCount implements Comparator<Tuple2<String, Integer>>, Serializable {
+		public int compare(Tuple2<String, Integer> a, Tuple2<String, Integer> b) {
+			return (s2int(a._1) > s2int(b._1)) ? 1 : (s2int(a._1) < s2int(b._1)) ? -1 : (a._2 > b._2) ? -1 : (a._2 < b._2) ? 1 : 0;
 		}
+	}
+	
+	static Integer s2int(String s) {
+		return Integer.parseInt(s);
 	}
 	
 	static SparkSession settings() throws IOException {
