@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.stream.*;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Level;
@@ -70,37 +71,85 @@ public class Friends {
 		JavaPairRDD<Tuple2<Integer, Integer>,Integer> deg2_sum = deg2_poss_1.reduceByKey((i1, i2) -> i1 + i2);
 	//For each person, remove the recommendations they're already friends with
 		JavaPairRDD<Tuple2<Integer, Integer>,Integer> deg2 = deg2_sum.subtractByKey(pers_fr_0);
-
-		JavaPairRDD<Integer, Tuple2<Integer,Integer>> keys_split = swap_to_Int_T2(deg2);
-
-		keys_split.saveAsTextFile("output/keys_split");
+	
 		
+	//SWAP pers and numrecs
+		JavaPairRDD<Tuple2<Integer, Integer>,Integer> new_order = swap_1_3(deg2);
+	//SORT By Count
+		JavaPairRDD<Tuple2<Integer, Integer>,Integer> sorted_by_count = new_order.sortByKey(new CompByCount2());
+	//SWAP pers and numrecs back and switch format
+		JavaPairRDD<Integer, Tuple2<Integer, Integer>> sorted_new_format = swap_1_3_and_format(sorted_by_count);
+	//group by key (make the second half an array)
+		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> grouped_by_key = sorted_new_format.groupByKey();
+	//Drop the count and convert iterable to array
+		JavaPairRDD<Integer, Integer[]> ordered_suggests = iter2Array(grouped_by_key);
+		
+		ordered_suggests.foreach(x->printFinal(x));
+		
+		ordered_suggests.saveAsTextFile("output/ordered_suggests");
 		Thread.sleep(60000);
 	}
 	
-	static JavaPairRDD<Integer, Tuple2<Integer,Integer>> sort(JavaPairRDD<Integer, Tuple2<Integer,Integer>> unsorted) {
-		//Swap key._2 with value
-		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = swap_to_T2_Int(unsorted);
-		//Sort by key
-		JavaPairRDD<Tuple2<Integer, Integer>,Integer> sorted_but_swapped = swapped.sortByKey(new CompByCount());
-		//Unswap
-		JavaPairRDD<Integer, Tuple2<Integer, Integer>> sorted = swap_to_Int_T2(sorted_but_swapped);
-		return sorted;
+	static void printFinal(Tuple2<Integer, Integer[]> t) {
+		System.out.println(t._1);
 	}
 	
-	static JavaPairRDD<Tuple2<Integer, Integer>,Integer> swap_to_T2_Int(JavaPairRDD<Integer, Tuple2<Integer, Integer>> unsorted) {
-		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = unsorted.mapToPair(new PairFunction< Tuple2<Integer, Tuple2<Integer,Integer>>, Tuple2<Integer, Integer>, Integer>() {
-			public Tuple2<Tuple2<Integer, Integer>,Integer> call(Tuple2<Integer, Tuple2<Integer, Integer>> t2) {
-				return new Tuple2<>(new Tuple2<>(t2._1, t2._2._1), t2._1);
+	static JavaPairRDD<Integer, Integer[]> iter2Array(JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> int_TupItt_rdd) {
+		
+		JavaPairRDD<Integer, Integer[]> int_intArr = int_TupItt_rdd.mapToPair(new PairFunction<Tuple2<Integer, Iterable<Tuple2<Integer, Integer>>>, Integer, Integer[]>() { 
+			public Tuple2<Integer, Integer[]> call(Tuple2<Integer,Iterable<Tuple2<Integer,Integer>>> int_TupItt) {
+				Iterator<Tuple2<Integer, Integer>> it = int_TupItt._2.iterator();
+				List<Integer> suggests = new ArrayList<>();
+				int i = 0;
+				while(it.hasNext()) {
+					suggests.add(it.next()._1);
+					i++;
+				}
+				
+				Integer[] intArr = suggests.toArray(new Integer[suggests.size()]);
+				for(Integer in: intArr)
+					System.out.println(in);
+				return new Tuple2<Integer, Integer[]>(int_TupItt._1, intArr);
+			}
+		});
+		return int_intArr;
+	}
+	
+	//Swap new to old
+	static JavaPairRDD<Tuple2<Integer, Integer>,Integer> swap_1_3(JavaPairRDD<Tuple2<Integer, Integer>,Integer> unsorted) {
+		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = unsorted.mapToPair(new PairFunction<Tuple2<Tuple2<Integer, Integer>,Integer>, Tuple2<Integer, Integer>, Integer>() {
+			public Tuple2<Tuple2<Integer, Integer>,Integer> call(Tuple2<Tuple2<Integer, Integer>,Integer> t) {
+				return new Tuple2<>(new Tuple2<>(t._2, t._1._2), t._1._1);
 			}
 		});
 		return swapped;
 	}
 	
-	static JavaPairRDD<Integer, Tuple2<Integer, Integer>> swap_to_Int_T2(JavaPairRDD<Tuple2<Integer, Integer>,Integer> unsorted) {
+	//Swap to new style
+	static JavaPairRDD<Integer, Tuple2<Integer, Integer>> swap_1_3_and_format(JavaPairRDD<Tuple2<Integer, Integer>,Integer> unsorted) {
 		JavaPairRDD<Integer, Tuple2<Integer, Integer>> swapped = unsorted.mapToPair(new PairFunction<Tuple2<Tuple2<Integer, Integer>,Integer>, Integer, Tuple2<Integer, Integer>>() {
-			public Tuple2<Integer, Tuple2<Integer,Integer>> call(Tuple2<Tuple2<Integer, Integer>,Integer> t2) {
-				return new Tuple2<>(t2._1._1, new Tuple2<>(t2._1._2, t2._2));
+			public Tuple2<Integer, Tuple2<Integer,Integer>> call(Tuple2<Tuple2<Integer, Integer>,Integer> t) {
+				return new Tuple2<>(t._2, new Tuple2<>(t._1._2, t._1._1));
+			}
+		});
+		return swapped;
+	}
+	
+//	static JavaPairRDD<Integer, Tuple2<Integer,Integer>> sort(JavaPairRDD<Integer, Tuple2<Integer,Integer>> unsorted) {
+//		//Swap key._2 with value
+//		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = swap_T2_Int(unsorted);
+//		//Sort by key
+//		JavaPairRDD<Tuple2<Integer, Integer>,Integer> sorted_but_swapped = swapped.sortByKey(new CompByCount2());
+//		//Unswap
+//		JavaPairRDD<Integer, Tuple2<Integer, Integer>> sorted = swap_Int_T2(sorted_but_swapped);
+//		return sorted;
+//	}
+	
+	//Swap new to old
+	static JavaPairRDD<Tuple2<Integer, Integer>,Integer> swap_T2_Int(JavaPairRDD<Integer, Tuple2<Integer, Integer>> unsorted) {
+		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = unsorted.mapToPair(new PairFunction< Tuple2<Integer, Tuple2<Integer,Integer>>, Tuple2<Integer, Integer>, Integer>() {
+			public Tuple2<Tuple2<Integer, Integer>,Integer> call(Tuple2<Integer, Tuple2<Integer, Integer>> t2) {
+				return new Tuple2<>(new Tuple2<>(t2._1, t2._2._1), t2._2._2);
 			}
 		});
 		return swapped;
