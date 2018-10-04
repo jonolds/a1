@@ -70,39 +70,53 @@ public class Friends {
 		JavaPairRDD<Tuple2<Integer, Integer>,Integer> deg2_sum = deg2_poss_1.reduceByKey((i1, i2) -> i1 + i2);
 	//For each person, remove the recommendations they're already friends with
 		JavaPairRDD<Tuple2<Integer, Integer>,Integer> deg2 = deg2_sum.subtractByKey(pers_fr_0);
-	//Sort the list by Person and Fr(deg2 candidate)
-		JavaPairRDD<Tuple2<Integer, Integer>,Integer> sort_pers_fr = deg2.sortByKey(new CompPersFr());	
-	//Sort the list again by number of recs per candidate
-		JavaPairRDD<Tuple2<Integer, Integer>,Integer> sorted = sortByCount(sort_pers_fr);
 
-		JavaPairRDD<Integer, Tuple2<Integer,Integer>> keys_split = splitKeys(sorted);
-		
-		
-		JavaPairRDD<Integer,Iterable<Tuple2<Integer,Integer>>> not_a_pair = keys_split.groupByKey();
+		JavaPairRDD<Integer, Tuple2<Integer,Integer>> keys_split = swap_to_Int_T2(deg2);
 
-
-
-		
-		sorted.saveAsTextFile("output/sorted");
 		keys_split.saveAsTextFile("output/keys_split");
-		not_a_pair.saveAsTextFile("output/not_a_pair");
-//		no_counts.saveAsTextFile("output/no_counts");
-//		topTen.saveAsTextFile("output/topTen");
-//		Object[] rdds = new Object[] {"tokenized: ",tokenized, "no_frds: ",no_frds, "has_frds: ",has_frds, "pers_fr_0: ",pers_fr_0, "deg2_poss_1: ",deg2_poss_1, "deg2_poss_sum: ",deg2_poss_sum, "deg2: ",deg2, "sort_pers_fr ",sort_pers_fr, "sort_pers_numrecs_fr: ",sort_pers_numrecs_fr};
-//		printSave(new Object[] {sort_pers_fr, sort_pers_numrecs_fr, rdds});
+		
 		Thread.sleep(60000);
 	}
 	
-	static JavaPairRDD<Integer, Tuple2<Integer,Integer>> splitKeys(JavaPairRDD<Tuple2<Integer, Integer>,Integer> t2_key) {
-		JavaPairRDD<Integer, Tuple2<Integer,Integer>> int_key = t2_key.mapToPair(new PairFunction<Tuple2<Tuple2<Integer, Integer>,Integer>, Integer, Tuple2<Integer, Integer>>() {
+	static JavaPairRDD<Integer, Tuple2<Integer,Integer>> sort(JavaPairRDD<Integer, Tuple2<Integer,Integer>> unsorted) {
+		//Swap key._2 with value
+		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = swap_to_T2_Int(unsorted);
+		//Sort by key
+		JavaPairRDD<Tuple2<Integer, Integer>,Integer> sorted_but_swapped = swapped.sortByKey(new CompByCount());
+		//Unswap
+		JavaPairRDD<Integer, Tuple2<Integer, Integer>> sorted = swap_to_Int_T2(sorted_but_swapped);
+		return sorted;
+	}
+	
+	static JavaPairRDD<Tuple2<Integer, Integer>,Integer> swap_to_T2_Int(JavaPairRDD<Integer, Tuple2<Integer, Integer>> unsorted) {
+		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = unsorted.mapToPair(new PairFunction< Tuple2<Integer, Tuple2<Integer,Integer>>, Tuple2<Integer, Integer>, Integer>() {
+			public Tuple2<Tuple2<Integer, Integer>,Integer> call(Tuple2<Integer, Tuple2<Integer, Integer>> t2) {
+				return new Tuple2<>(new Tuple2<>(t2._1, t2._2._1), t2._1);
+			}
+		});
+		return swapped;
+	}
+	
+	static JavaPairRDD<Integer, Tuple2<Integer, Integer>> swap_to_Int_T2(JavaPairRDD<Tuple2<Integer, Integer>,Integer> unsorted) {
+		JavaPairRDD<Integer, Tuple2<Integer, Integer>> swapped = unsorted.mapToPair(new PairFunction<Tuple2<Tuple2<Integer, Integer>,Integer>, Integer, Tuple2<Integer, Integer>>() {
 			public Tuple2<Integer, Tuple2<Integer,Integer>> call(Tuple2<Tuple2<Integer, Integer>,Integer> t2) {
 				return new Tuple2<>(t2._1._1, new Tuple2<>(t2._1._2, t2._2));
 			}
 		});
-		return int_key;
+		return swapped;
 	}
 	
-
+	static class CompPersFr2 implements Comparator<Tuple2<Integer, Integer>>, Serializable {
+		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
+			return (a._1 > b._1) ? 1: (a._1 < b._1) ? -1 : (a._2 > b._2) ? 1 : (a._2 < b._2) ? -1 : 0;
+		}
+	}
+	static class CompByCount2 implements Comparator<Tuple2<Integer, Integer>>, Serializable {
+		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
+			return (a._1 > b._1) ? 1 : (a._1 < b._1) ? -1 : (a._2 > b._2) ? -1 : (a._2 < b._2) ? 1 : 0;
+		}
+	}
+	
 	static JavaPairRDD<Tuple2<Integer, Integer>,Integer> sortByCount(JavaPairRDD<Tuple2<Integer, Integer>,Integer> unsorted) {
 		//Swap key._2 with value
 		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = swapKey2Val(unsorted);
@@ -114,29 +128,12 @@ public class Friends {
 	}
 	static JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapKey2Val(JavaPairRDD<Tuple2<Integer, Integer>,Integer> unsorted) {
 		JavaPairRDD<Tuple2<Integer, Integer>,Integer> swapped = unsorted.mapToPair(new PairFunction<Tuple2<Tuple2<Integer, Integer>,Integer>, Tuple2<Integer, Integer>, Integer>() {
-			public Tuple2<Tuple2<Integer, Integer>,Integer> call(Tuple2<Tuple2<Integer, Integer>,Integer> t2t2) {
-				return new Tuple2<>(new Tuple2<>(t2t2._1._1, t2t2._2), t2t2._1._2);
+			public Tuple2<Tuple2<Integer, Integer>,Integer> call(Tuple2<Tuple2<Integer, Integer>,Integer> t2) {
+				return new Tuple2<>(new Tuple2<>(t2._1._1, t2._2), t2._1._2);
 			}
 		});
 		return swapped;
 	}
-
-	@SuppressWarnings("unchecked")
-	static void printSortPersNumrecsFr(Object objs) throws InterruptedException {
-		System.out.println("\n" +"sort_pers_numrecs_fr: ");
-		List<Tuple2<Tuple2<String, Integer>, String>> aList2 = ((JavaPairRDD<Tuple2<String, Integer>,String>)objs).collect();
-		for(Tuple2<Tuple2<String, Integer>, String> t2: aList2)
-			System.out.println("	("+ t2._1._1 + "," + t2._2 + ") - " + t2._1._2);
-		((JavaPairRDD<Tuple2<String, Integer>,String>)objs).saveAsTextFile("output");
-	}
-	
-	static void printSave(Object[] objs) throws InterruptedException {
-//		printSortPersFr(objs[0]);
-//		printSortPersNumrecsFr(objs[1]);
-		printCounts((Object[])objs[2]);
-		
-	}
-	
 	static class CompPersFr implements Comparator<Tuple2<Integer, Integer>>, Serializable {
 		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
 			return (a._1 > b._1) ? 1: (a._1 < b._1) ? -1 : (a._2 > b._2) ? 1 : (a._2 < b._2) ? -1 : 0;
@@ -148,6 +145,20 @@ public class Friends {
 		}
 	}
 	
+	@SuppressWarnings("unchecked")
+	static void printSortPersNumrecsFr(Object objs) throws InterruptedException {
+		System.out.println("\n" +"sort_pers_numrecs_fr: ");
+		List<Tuple2<Tuple2<String, Integer>, String>> aList2 = ((JavaPairRDD<Tuple2<String, Integer>,String>)objs).collect();
+		for(Tuple2<Tuple2<String, Integer>, String> t2: aList2)
+			System.out.println("	("+ t2._1._1 + "," + t2._2 + ") - " + t2._1._2);
+		((JavaPairRDD<Tuple2<String, Integer>,String>)objs).saveAsTextFile("output");
+	}
+	static void printSave(Object[] objs) throws InterruptedException {
+//		printSortPersFr(objs[0]);
+//		printSortPersNumrecsFr(objs[1]);
+		printCounts((Object[])objs[2]);
+		
+	}
 	@SuppressWarnings("rawtypes")
 	static void printCounts(Object[] objs) {
 		System.out.println("\n" +"Counts:");
@@ -155,7 +166,6 @@ public class Friends {
 			System.out.println("    " + objs[i] + ((JavaRDDLike)objs[i+1]).count());
 		}
 	}
-	
 	@SuppressWarnings("unchecked")
 	static void printSortPersFr(Object sorted) throws InterruptedException {
 		System.out.println("\n" +"sort_pers_fr: ");
@@ -163,7 +173,6 @@ public class Friends {
 		for(Tuple2<Tuple2<String, String>, Integer> t2: aList2)
 			System.out.println("	("+ t2._1._1 + "," + t2._1._2 + ") - " + t2._2);
 	}
-	
 	static SparkSession settings() throws IOException {
 		Logger.getLogger("org").setLevel(Level.WARN);
 		Logger.getLogger("akka").setLevel(Level.WARN);
