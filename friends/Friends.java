@@ -2,14 +2,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.stream.*;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Level;
@@ -21,19 +16,18 @@ import org.apache.spark.api.java.JavaRDDLike;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.api.java.function.PairFunction;
-import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.SparkSession;
 
 //import scala.Option;
-import scala.*;
 //import scala.collection.Map;
 //import scala.collection.immutable.List;
+import scala.Serializable;
+import scala.Tuple2;
 
 
-@SuppressWarnings("unused")
 public class Friends {
 	public static void main(String[] args) throws IOException, InterruptedException {
-		JavaRDD<String> lines = settings().read().textFile("sociNetShort.txt").javaRDD();
+		JavaRDD<String> lines = settings().read().textFile("sociNet.txt").javaRDD();
 		
 		JavaPairRDD<Integer, Integer[]> tokenized = lines.mapToPair(new PairFunction<String, Integer, Integer[]>() { 
 			public Tuple2<Integer, Integer[]> call(String s) {
@@ -79,19 +73,65 @@ public class Friends {
 		JavaPairRDD<Tuple2<Integer, Integer>,Integer> sorted_by_count = new_order.sortByKey(new CompByCount2());
 	//SWAP pers and numrecs back and switch format
 		JavaPairRDD<Integer, Tuple2<Integer, Integer>> sorted_new_format = swap_1_3_and_format(sorted_by_count);
-	//group by key (make the second half an array)
+	//group by key (make the collection in the form of an interable)
 		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> grouped_by_key = sorted_new_format.groupByKey();
 	//Drop the count and convert iterable to array
 		JavaPairRDD<Integer, Integer[]> ordered_suggests = iter2Array(grouped_by_key);
+	//Add no friends list AND Order by Key
+		JavaPairRDD<Integer, Integer[]> with_friendless_sorted = ordered_suggests.union(no_frds).sortByKey().repartition(1);
 		
-		ordered_suggests.foreach(x->printFinal(x));
+	//save it to a single line JavaRDD string
+		JavaRDD<String> lines_out = ints2String(with_friendless_sorted);
 		
-		ordered_suggests.saveAsTextFile("output/ordered_suggests");
+		
+		lines_out.saveAsTextFile("output/lines_out");
+//		grouped_by_key.saveAsTextFile("output/grouped_by_key");
+//		ordered_suggests.saveAsTextFile("output/ordered_suggests");
+//		with_friendless_sorted.saveAsTextFile("output/final_int_rdd");
 		Thread.sleep(60000);
 	}
 	
+	static JavaRDD<String> ints2String(JavaPairRDD<Integer, Integer[]> int_intArr) {
+		return int_intArr.map(new Function<Tuple2<Integer, Integer[]>, String>() {
+			public String call(Tuple2<Integer, Integer[]> t) throws Exception {
+				int i = 0;
+				String s = t._1 + "\t";
+				if(t._2 != null) {
+					if(t._2.length >=1) {
+						s += String.valueOf(t._2[i]);
+						i++;
+					}
+					while(i < 10) {
+						s+= (i < t._2.length) ? ("," + t._2[i]) : ", ";
+						i++;
+					}
+				}
+				else
+					s += " , , , , , , , , , ";
+				return s;
+			}
+			
+		});
+	}
+	
 	static void printFinal(Tuple2<Integer, Integer[]> t) {
-		System.out.println(t._1);
+		System.out.print(t._1);
+		int i = 0;
+		String s = "\t";
+		if(t._2 != null) {
+			if(t._2.length >=1) {
+				s += String.valueOf(t._2[i]);
+				i++;
+			}
+			while(i < 10) {
+				s+= (i < t._2.length) ? ("," + t._2[i]) : ", ";
+				i++;
+			}
+		}
+		else
+			s += " , , , , , , , , , ";
+			
+		System.out.println(s);
 	}
 	
 	static JavaPairRDD<Integer, Integer[]> iter2Array(JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> int_TupItt_rdd) {
@@ -107,8 +147,8 @@ public class Friends {
 				}
 				
 				Integer[] intArr = suggests.toArray(new Integer[suggests.size()]);
-				for(Integer in: intArr)
-					System.out.println(in);
+//				for(Integer in: intArr)
+//					System.out.println(in);
 				return new Tuple2<Integer, Integer[]>(int_TupItt._1, intArr);
 			}
 		});
@@ -162,7 +202,7 @@ public class Friends {
 	}
 	static class CompByCount2 implements Comparator<Tuple2<Integer, Integer>>, Serializable {
 		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
-			return (a._1 > b._1) ? 1 : (a._1 < b._1) ? -1 : (a._2 > b._2) ? -1 : (a._2 < b._2) ? 1 : 0;
+			return (a._1 > b._1) ? -1 : (a._1 < b._1) ? 1 : (a._2 > b._2) ? 1 : (a._2 < b._2) ? -1 : 0;
 		}
 	}
 	
@@ -190,11 +230,10 @@ public class Friends {
 	}
 	static class CompByCount implements Comparator<Tuple2<Integer, Integer>>, Serializable {
 		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
-			return (a._1 > b._1) ? 1 : (a._1 < b._1) ? -1 : (a._2 > b._2) ? -1 : (a._2 < b._2) ? 1 : 0;
+			return (a._1 > b._1) ? -1 : (a._1 < b._1) ? 1 : (a._2 > b._2) ? 1 : (a._2 < b._2) ? -1 : 0;
 		}
 	}
 	
-	@SuppressWarnings("unchecked")
 	static void printSortPersNumrecsFr(Object objs) throws InterruptedException {
 		System.out.println("\n" +"sort_pers_numrecs_fr: ");
 		List<Tuple2<Tuple2<String, Integer>, String>> aList2 = ((JavaPairRDD<Tuple2<String, Integer>,String>)objs).collect();
@@ -208,14 +247,12 @@ public class Friends {
 		printCounts((Object[])objs[2]);
 		
 	}
-	@SuppressWarnings("rawtypes")
 	static void printCounts(Object[] objs) {
 		System.out.println("\n" +"Counts:");
 		for(int i = 0; i < objs.length; i+=2) {
 			System.out.println("    " + objs[i] + ((JavaRDDLike)objs[i+1]).count());
 		}
 	}
-	@SuppressWarnings("unchecked")
 	static void printSortPersFr(Object sorted) throws InterruptedException {
 		System.out.println("\n" +"sort_pers_fr: ");
 		List<Tuple2<Tuple2<String, String>, Integer>> aList2 = ((JavaPairRDD<Tuple2<String, String>,Integer>)sorted).collect();
