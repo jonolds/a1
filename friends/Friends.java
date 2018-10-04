@@ -195,11 +195,6 @@ public class Friends {
 		return swapped;
 	}
 	
-	static class CompPersFr2 implements Comparator<Tuple2<Integer, Integer>>, Serializable {
-		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
-			return (a._1 > b._1) ? 1: (a._1 < b._1) ? -1 : (a._2 > b._2) ? 1 : (a._2 < b._2) ? -1 : 0;
-		}
-	}
 	static class CompByCount2 implements Comparator<Tuple2<Integer, Integer>>, Serializable {
 		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
 			return (a._1 > b._1) ? -1 : (a._1 < b._1) ? 1 : (a._2 > b._2) ? 1 : (a._2 < b._2) ? -1 : 0;
@@ -223,11 +218,7 @@ public class Friends {
 		});
 		return swapped;
 	}
-	static class CompPersFr implements Comparator<Tuple2<Integer, Integer>>, Serializable {
-		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
-			return (a._1 > b._1) ? 1: (a._1 < b._1) ? -1 : (a._2 > b._2) ? 1 : (a._2 < b._2) ? -1 : 0;
-		}
-	}
+
 	static class CompByCount implements Comparator<Tuple2<Integer, Integer>>, Serializable {
 		public int compare(Tuple2<Integer, Integer> a, Tuple2<Integer, Integer> b) {
 			return (a._1 > b._1) ? -1 : (a._1 < b._1) ? 1 : (a._2 > b._2) ? 1 : (a._2 < b._2) ? -1 : 0;
